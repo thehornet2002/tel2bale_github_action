@@ -1,0 +1,137 @@
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from pyrogram.errors import PeerIdInvalid, UserNotParticipant
+from pyrogram.types import CallbackQuery
+from config import ADS_CHANNELS, MAX_USERS
+from db.model_async import is_user_exist, get_user_count
+from utils.keyboards import build_ads_channels
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+async def is_member_of_channel(client: Client, message: Message) -> bool:
+    """Check membership in all mandatory advertisement channels."""
+    if not message.from_user:
+        return False
+
+    if not ADS_CHANNELS:
+        return True
+
+    try:
+        for channel in ADS_CHANNELS:
+            try:
+                member = await client.get_chat_member(
+                    chat_id=normalize_ads_chat_id(channel),
+                    user_id=message.from_user.id
+                )
+                if member.status.value not in ("creator", "administrator", "member", 'owner'):
+                    await message.reply_text(
+                        "لطفا ابتدا در کانال‌های زیر عضو شوید",
+                        reply_markup=build_ads_channels(ADS_CHANNELS)
+                    )
+                    return False
+            except (UserNotParticipant, PeerIdInvalid):
+                await message.reply_text(
+                    "لطفا ابتدا در کانال‌های زیر عضو شوید",
+                    reply_markup=build_ads_channels(ADS_CHANNELS)
+                )
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"[FILTERS] Channel membership error: {e}")
+        return False
+
+
+async def _join_filter_func(_, client: Client, message: Message) -> bool:
+    return await is_member_of_channel(client, message)
+
+
+join_filter = filters.create(_join_filter_func)
+
+
+async def is_member_of_channel_cb(client: Client, callback: CallbackQuery) -> bool:
+    """Check channel membership in callback query context."""
+    if not ADS_CHANNELS:
+        return True
+
+    try:
+        for channel in ADS_CHANNELS:
+            try:
+                member = await client.get_chat_member(
+                    chat_id=normalize_ads_chat_id(channel),
+                    user_id=callback.from_user.id
+                )
+                if member.status.value not in ("creator", "administrator", "member", "owner"):
+                    await callback.answer("لطفا ابتدا در کانال‌های زیر عضو شوید", show_alert=True)
+                    return False
+            except (UserNotParticipant, PeerIdInvalid):
+                await callback.answer("لطفا ابتدا در کانال‌های زیر عضو شوید", show_alert=True)
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"[FILTERS] Channel membership error (callback): {e}")
+        return False
+
+
+async def _join_filter_cb_func(_, client: Client, callback: CallbackQuery) -> bool:
+    return await is_member_of_channel_cb(client, callback)
+
+
+def normalize_ads_chat_id(channel):
+    if isinstance(channel, str) and channel.strip().lstrip("-").isdigit():
+        return int(channel.strip())
+    return channel
+
+join_filter_cb = filters.create(_join_filter_cb_func)
+
+
+async def has_user_capacity(tg_id: int) -> bool:
+    """Verify if new user registration capacity (MAX_USERS) is open."""
+    if not MAX_USERS:
+        return True
+
+    if await is_user_exist(tg_id):
+        return True
+
+    return await get_user_count() < MAX_USERS
+
+
+async def _user_limit_filter_func(_, client: Client, message: Message) -> bool:
+    if not message.from_user:
+        return False
+
+    if await has_user_capacity(message.from_user.id):
+        return True
+
+    await message.reply_text("ظرفیت ثبت‌نام کاربران جدید در ربات تکمیل شده است.")
+    return False
+
+
+user_limit_filter = filters.create(_user_limit_filter_func)
+
+
+async def _whitelist_filter_func(_, client: Client, message: Message) -> bool:
+    if not message.from_user:
+        return False
+    from db.model_async import is_user_whitelisted
+    if is_user_whitelisted(message.from_user.id):
+        return True
+    await message.reply_text("⛔ این ربات در حالت لیست سفید (Whitelist) قرار دارد و حساب شما مجاز نیست.")
+    return False
+
+
+whitelist_filter = filters.create(_whitelist_filter_func)
+
+
+async def _whitelist_filter_cb_func(_, client: Client, callback: CallbackQuery) -> bool:
+    if not callback.from_user:
+        return False
+    from db.model_async import is_user_whitelisted
+    if is_user_whitelisted(callback.from_user.id):
+        return True
+    await callback.answer("⛔ دسترسی شما مجاز نیست (لیست سفید فعال است).", show_alert=True)
+    return False
+
+
+whitelist_filter_cb = filters.create(_whitelist_filter_cb_func)

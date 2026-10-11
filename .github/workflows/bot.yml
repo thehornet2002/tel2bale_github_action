@@ -1,0 +1,110 @@
+name: Tel2Bale Bot Runner
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Watchdog timer: checks every 30 minutes to resume execution if not currently running
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: tel2bale-bot-runner
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    name: Telegram to Bale Bridge Bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Check Concurrency Guard
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python scripts/check_running.py
+
+      - name: Install Python Dependencies
+        if: steps.guard.outputs.should_run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore Encrypted Database State
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
+          TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
+          TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/storage_manager.py restore
+
+      - name: Run Tel2Bale Bot (Rotation: 330 mins)
+        id: run_bot
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          TEL_API_ID: ${{ secrets.TEL_API_ID }}
+          TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
+          TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
+          TEL_ADMIN_IDS: ${{ secrets.TEL_ADMIN_IDS }}
+          TEL_START_TXT: ${{ secrets.TEL_START_TXT }}
+          TEL_HELP_TXT: ${{ secrets.TEL_HELP_TXT }}
+          TEL_MAX_FILE_SIZE: ${{ secrets.TEL_MAX_FILE_SIZE || '20' }}
+          DONATION_LINK: ${{ secrets.DONATION_LINK }}
+          REDIS_URL: ${{ secrets.REDIS_URL || 'redis://127.0.0.1:6379/0' }}
+          SUPPORT_MESSAGE_LIMIT: ${{ secrets.SUPPORT_MESSAGE_LIMIT || '5' }}
+          MAX_USERS: ${{ secrets.MAX_USERS || '0' }}
+          MAX_ACTIVE_USERS: ${{ secrets.MAX_ACTIVE_USERS || '0' }}
+          MAX_RUNTIME_MINUTES: '330'
+        run: |
+          python main.py
+
+      - name: Save and Encrypt Database State
+        if: steps.guard.outputs.should_run == 'true' && always()
+        env:
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
+          TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
+          TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/storage_manager.py backup
+
+      - name: Dispatch Next Rotation Handover
+        if: steps.guard.outputs.should_run == 'true' && steps.run_bot.outcome == 'success'
+        env:
+          WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/retrigger.py

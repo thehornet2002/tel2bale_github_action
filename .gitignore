@@ -1,0 +1,16 @@
+*.session
+*.session-journal
+*.db
+*.db-shm
+*.db-wal
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+logs/
+downloads/
+backups/
+redis_data/
+.vscode/
+.idea/
