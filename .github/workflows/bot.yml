@@ -2,6 +2,12 @@ name: Tel2Bale Bot Runner
 
 on:
   workflow_dispatch:
+    inputs:
+      force_restart:
+        description: 'Force stop any existing run and restart fresh'
+        required: false
+        default: false
+        type: boolean
   schedule:
     # Watchdog timer: checks every 30 minutes to resume execution if not currently running
     - cron: '*/30 * * * *'
@@ -9,10 +15,6 @@ on:
 permissions:
   contents: write
   actions: write
-
-concurrency:
-  group: tel2bale-bot-runner
-  cancel-in-progress: false
 
 jobs:
   run-bot:
@@ -46,11 +48,23 @@ jobs:
       - name: Check Concurrency Guard
         id: guard
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          FORCE_RESTART: ${{ github.event.inputs.force_restart || 'false' }}
         run: |
           python scripts/check_running.py
+
+      - name: Validate Required Secrets
+        id: validate
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          TEL_API_ID: ${{ secrets.TEL_API_ID }}
+          TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
+          TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
+          TEL_ADMIN_IDS: ${{ secrets.TEL_ADMIN_IDS }}
+        run: |
+          python scripts/validate_secrets.py
 
       - name: Install Python Dependencies
         if: steps.guard.outputs.should_run == 'true'
@@ -64,7 +78,7 @@ jobs:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
           TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
           TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/storage_manager.py restore
@@ -90,12 +104,12 @@ jobs:
           python main.py
 
       - name: Save and Encrypt Database State
-        if: steps.guard.outputs.should_run == 'true' && always()
+        if: always() && steps.guard.outputs.should_run == 'true' && steps.validate.outcome == 'success'
         env:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
           TEL_BOT_TOKEN: ${{ secrets.TEL_BOT_TOKEN }}
           TEL_API_HASH: ${{ secrets.TEL_API_HASH }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/storage_manager.py backup
@@ -104,7 +118,7 @@ jobs:
         if: steps.guard.outputs.should_run == 'true' && steps.run_bot.outcome == 'success'
         env:
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/retrigger.py

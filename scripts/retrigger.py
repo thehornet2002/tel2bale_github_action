@@ -9,6 +9,9 @@ import sys
 import urllib.error
 import urllib.request
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def main():
     repo = os.getenv("GITHUB_REPOSITORY")

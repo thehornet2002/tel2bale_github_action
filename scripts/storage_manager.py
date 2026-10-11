@@ -12,6 +12,9 @@ import sys
 import tarfile
 import tempfile
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -250,6 +253,16 @@ def backup():
             print("[STORAGE] State successfully encrypted and pushed to 'storage' branch.")
         else:
             print(f"[STORAGE] Warning: Failed to push to 'storage' branch: {push_res.stderr}")
+            if "403" in push_res.stderr or "Permission" in push_res.stderr or "denied" in push_res.stderr:
+                print("\n" + "=" * 70)
+                print("⚠️  PERMISSION ACTION REQUIRED:")
+                print("GitHub Actions does not have write permissions to your repository.")
+                print("To fix this and enable automatic state persistence:")
+                print("1. Go to your repository Settings -> Actions -> General.")
+                print("2. Under 'Workflow permissions', select 'Read and write permissions'.")
+                print("3. Check 'Allow GitHub Actions to create and approve pull requests'.")
+                print("4. Click 'Save'.")
+                print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
