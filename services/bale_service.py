@@ -4,6 +4,9 @@ import inspect
 import uuid
 
 from config import BALE_PROXY_URL
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # Request timeout for lightweight operations (text, location, contact, etc.)
@@ -389,19 +392,20 @@ class BaleService:
             json=payload
         )
 
-    async def verify_token(self, bale_bot_token: str) -> bool:
+    async def verify_token(self, bale_bot_token: str) -> tuple[bool, str]:
         """
         بررسی صحت bot_token با فراخوانی getMe.
 
         Returns:
-            True  → token معتبر است
-            False → token نامعتبر یا خطا در اتصال
+            (True, "")            → token معتبر است
+            (False, error_reason) → token نامعتبر یا خطا در اتصال
         """
         try:
             await self._request(bale_bot_token, "getMe", method="GET")
-            return True
-        except Exception:
-            return False
+            return True, ""
+        except Exception as e:
+            logger.warning(f"[BALE] Token verification failed: {e}")
+            return False, str(e)
 
 
 bale_bot = BaleService()
