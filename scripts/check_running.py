@@ -70,7 +70,7 @@ def main():
         other_active_runs = [
             r for r in active_runs
             if str(r.get("id")) != str(current_run_id)
-            and "bot" in str(r.get("path", "")).lower() or "tel2bale" in str(r.get("name", "")).lower()
+            and ("bot" in str(r.get("path", "")).lower() or "tel2bale" in str(r.get("name", "")).lower())
         ]
 
         if other_active_runs:
