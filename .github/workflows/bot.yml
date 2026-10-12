@@ -83,7 +83,7 @@ jobs:
         run: |
           python scripts/storage_manager.py restore
 
-      - name: Run Tel2Bale Bot (Rotation: 330 mins)
+      - name: 'Run Tel2Bale Bot (Rotation: 330 mins)'
         id: run_bot
         if: steps.guard.outputs.should_run == 'true'
         env:
