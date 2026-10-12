@@ -37,8 +37,11 @@ ADMIN_IDS = _parse_list(os.getenv("TEL_ADMIN_IDS", ""), int)
 
 MAX_FILE_SIZE = _safe_int(os.getenv("TEL_MAX_FILE_SIZE"), 20) * 1024 * 1024
 
-START_TXT = os.getenv("TEL_START_TXT", "")
-HELP_TXT = os.getenv("TEL_HELP_TXT", "")
+DEFAULT_START_TXT = "به ربات انتقال پیام تلگرام به بله خوش آمدید."
+DEFAULT_HELP_TXT = "ابتدا شناسه بله و توکن ربات بله خود را تنظیم کنید، سپس پیام‌ها را ارسال کنید."
+
+START_TXT = os.getenv("TEL_START_TXT", "").strip() or DEFAULT_START_TXT
+HELP_TXT = os.getenv("TEL_HELP_TXT", "").strip() or DEFAULT_HELP_TXT
 DONATION_LINK = os.getenv("DONATION_LINK", "")
 IN_MEMORY = os.getenv("TEL_IN_MEMORY", "False").lower() == "true"
 SUPPORT_MESSAGE_LIMIT = _safe_int(os.getenv('SUPPORT_MESSAGE_LIMIT'), 5)
